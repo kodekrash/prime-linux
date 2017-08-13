@@ -1,0 +1,12 @@
+--- whiptail.c	31 Jan 2007 13:48:15 -0000	1.21
++++ whiptail.c	25 Jun 2007 10:37:18 -0000	1.22
+@@ -569,7 +569,8 @@
+       case MODE_RADIOLIST:
+ 	rc = checkList(text, height, width, optCon, 1, flags, &selections);
+ 	if (rc == DLG_OKAY) {
+-	    fprintf(output, "%s", selections[0]);
++	    if (selections[0])
++		fprintf(output, "%s", selections[0]);
+ 	    free(selections);
+ 	}
+ 	break;

@@ -1,0 +1,32 @@
+#!/bin/bash
+###########################################################
+# Init Script: udev
+###########################################################
+
+if ! mountpoint /proc &> /dev/null; then
+        mount -n /proc || failed=1
+fi
+
+if ! mountpoint /sys &> /dev/null; then
+        mount -n /sys || failed=1
+fi
+
+if ! grep -q '[[:space:]]sysfs' /proc/mounts; then
+        echo "No SySFS available!"
+        sleep 10
+        /etc/rc.d/rc.0
+fi
+
+mount -n -t tmpfs tmpfs /dev -o mode=755
+if [ ${?} != 0 ]; then
+        echo "Unable to mount temp /dev!"
+        sleep 10
+        /etc/rc.d/rc.0
+fi
+
+echo > /proc/sys/kernel/hotplug
+cp -a /lib/udev/devices/* /dev
+/sbin/udevd --daemon
+/sbin/udevtrigger
+/sbin/udevsettle
+

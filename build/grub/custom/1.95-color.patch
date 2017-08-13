@@ -1,0 +1,387 @@
+diff -x '*~' -x '*.mk' -Nurp conf/i386-pc.rmk grub2.color/conf/i386-pc.rmk
+--- conf/i386-pc.rmk	2007-12-26 08:51:18.000000000 +0100
++++ grub2.color/conf/i386-pc.rmk	2008-01-03 15:01:09.000000000 +0100
+@@ -111,7 +111,7 @@ grub_emu_SOURCES = commands/boot.c comma
+ 	kern/loader.c kern/main.c kern/misc.c kern/parser.c		\
+ 	grub_script.tab.c kern/partition.c kern/rescue.c kern/term.c	\
+ 	normal/arg.c normal/cmdline.c normal/command.c normal/function.c\
+-	normal/completion.c normal/main.c				\
++	normal/completion.c normal/main.c normal/color.c		\
+ 	normal/menu.c normal/menu_entry.c normal/misc.c normal/script.c	\
+ 	partmap/amiga.c	partmap/apple.c partmap/pc.c partmap/sun.c	\
+ 	partmap/acorn.c partmap/gpt.c					\
+@@ -168,6 +168,7 @@ normal_mod_DEPENDENCIES = grub_script.ta
+ normal_mod_SOURCES = normal/arg.c normal/cmdline.c normal/command.c	\
+ 	normal/completion.c normal/execute.c		 		\
+ 	normal/function.c normal/lexer.c normal/main.c normal/menu.c	\
++	normal/color.c							\
+ 	normal/menu_entry.c normal/misc.c grub_script.tab.c 		\
+ 	normal/script.c normal/i386/setjmp.S
+ normal_mod_CFLAGS = $(COMMON_CFLAGS)
+
+diff -x '*~' -x '*.mk' -Nurp include/grub/normal.h grub2.color/include/grub/normal.h
+--- include/grub/normal.h	2007-07-22 01:32:22.000000000 +0200
++++ grub2.color/include/grub/normal.h	2008-01-03 16:12:53.000000000 +0100
+@@ -1,7 +1,7 @@
+ /* normal.h - prototypes for the normal mode */
+ /*
+  *  GRUB  --  GRand Unified Bootloader
+- *  Copyright (C) 2002,2003,2005,2006,2007  Free Software Foundation, Inc.
++ *  Copyright (C) 2002,2003,2005,2006,2007,2008  Free Software Foundation, Inc.
+  *
+  *  GRUB is free software: you can redistribute it and/or modify
+  *  it under the terms of the GNU General Public License as published by
+@@ -154,6 +154,9 @@ grub_err_t grub_normal_print_device_info
+ grub_err_t grub_normal_menu_addentry (const char *title,
+ 				      struct grub_script *script,
+ 				      const char *sourcecode);
++char *grub_env_write_color_normal (struct grub_env_var *var, const char *val);
++char *grub_env_write_color_highlight (struct grub_env_var *var, const char *val);
++void grub_wait_after_message (void);
+ 
+ #ifdef GRUB_UTIL
+ void grub_normal_init (void);
+
+diff -x '*~' -x '*.mk' -Nurp normal/color.c grub2.color/normal/color.c
+--- normal/color.c	1970-01-01 01:00:00.000000000 +0100
++++ grub2.color/normal/color.c	2008-01-03 15:44:48.000000000 +0100
+@@ -0,0 +1,149 @@
++/*
++ *  GRUB  --  GRand Unified Bootloader
++ *  Copyright (C) 1999,2000,2001,2002,2003,2004,2008  Free Software Foundation, Inc.
++ *
++ *  GRUB is free software: you can redistribute it and/or modify
++ *  it under the terms of the GNU General Public License as published by
++ *  the Free Software Foundation, either version 3 of the License, or
++ *  (at your option) any later version.
++ *
++ *  GRUB is distributed in the hope that it will be useful,
++ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
++ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ *  GNU General Public License for more details.
++ *
++ *  You should have received a copy of the GNU General Public License
++ *  along with GRUB.  If not, see <http://www.gnu.org/licenses/>.
++ */
++
++#include <grub/env.h>
++#include <grub/misc.h>
++#include <grub/mm.h>
++#include <grub/normal.h>
++#include <grub/term.h>
++
++/* Borrowed from GRUB Legacy */
++static char *color_list[16] =
++{
++  "black",
++  "blue",
++  "green",
++  "cyan",
++  "red",
++  "magenta",
++  "brown",
++  "light-gray",
++  "dark-gray",
++  "light-blue",
++  "light-green",
++  "light-cyan",
++  "light-red",
++  "light-magenta",
++  "yellow",
++  "white"
++};
++
++static int
++parse_color_name (grub_uint8_t *ret, char *name)
++{
++  grub_uint8_t i;
++  for (i = 0; i < sizeof (color_list) / sizeof (*color_list); i++)
++    if (! grub_strcmp (name, color_list[i]))
++      {
++        *ret = i;
++        return 0;
++      }
++  return -1;
++}
++
++void
++grub_parse_color_name_pair (grub_uint8_t *ret, char *name)
++{
++  grub_uint8_t fg, bg;
++  char *fg_name, *bg_name;
++
++  /* nothing specified by user */
++  if (name == NULL)
++    return;
++
++  fg_name = grub_strdup (name);
++  if (fg_name == NULL)
++    {
++      /* "out of memory" message was printed by grub_strdup() */
++      grub_wait_after_message ();
++      return;
++    }
++
++  bg_name = grub_strchr (fg_name, '/');
++  if (bg_name == NULL)
++    {
++      grub_printf ("Warning: syntax error (missing slash) in `%s'\n", fg_name);
++      grub_wait_after_message ();
++      goto free_and_return;
++    }
++
++  *(bg_name++) = '\0';
++
++  if (parse_color_name (&fg, fg_name) == -1)
++    {
++      grub_printf ("Warning: invalid foreground color `%s'\n", fg_name);
++      grub_wait_after_message ();
++      goto free_and_return;
++    }
++  if (parse_color_name (&bg, bg_name) == -1)
++    {
++      grub_printf ("Warning: invalid background color `%s'\n", bg_name);
++      grub_wait_after_message ();
++      goto free_and_return;
++    }
++
++  *ret = (bg << 4) | fg;
++
++free_and_return:
++  grub_free (fg_name);
++}
++
++/* Replace default `normal' colors with the ones specified by user (if any).  */
++char *
++grub_env_write_color_normal (struct grub_env_var *var __attribute__ ((unused)),
++			     const char *val)
++{
++  grub_uint8_t color_normal, color_highlight;
++
++  /* Use old settings in case grub_parse_color_name_pair() has no effect.  */
++  grub_getcolor (&color_normal, &color_highlight);
++
++  grub_parse_color_name_pair (&color_normal, val);
++
++  /* Reloads terminal `normal' and `highlight' colors.  */
++  grub_setcolor (color_normal, color_highlight);
++
++  /* Propagates `normal' color to terminal current color.  */
++  grub_setcolorstate (GRUB_TERM_COLOR_NORMAL);
++
++  return grub_strdup (val);
++}
++
++/* Replace default `highlight' colors with the ones specified by user (if any).  */
++char *
++grub_env_write_color_highlight (struct grub_env_var *var __attribute__ ((unused)),
++				const char *val)
++{
++  grub_uint8_t color_normal, color_highlight;
++
++  /* Use old settings in case grub_parse_color_name_pair() has no effect.  */
++  grub_getcolor (&color_normal, &color_highlight);
++
++  grub_parse_color_name_pair (&color_highlight, val);
++
++  /* Reloads terminal `normal' and `highlight' colors.  */
++  grub_setcolor (color_normal, color_highlight);
++
++  /* Propagates `normal' color to terminal current color.
++     Note: Using GRUB_TERM_COLOR_NORMAL here rather than
++     GRUB_TERM_COLOR_HIGHLIGHT is intentional.  We don't want to switch
++     to highlight state just because color was reloaded.  */
++  grub_setcolorstate (GRUB_TERM_COLOR_NORMAL);
++
++  return grub_strdup (val);
++}
+
+diff -x '*~' -x '*.mk' -Nurp normal/main.c grub2.color/normal/main.c
+--- normal/main.c	2007-07-22 01:32:29.000000000 +0200
++++ grub2.color/normal/main.c	2008-01-03 16:13:37.000000000 +0100
+@@ -1,7 +1,7 @@
+ /* main.c - the normal mode main routine */
+ /*
+  *  GRUB  --  GRand Unified Bootloader
+- *  Copyright (C) 2000,2001,2002,2003,2005,2006,2007  Free Software Foundation, Inc.
++ *  Copyright (C) 2000,2001,2002,2003,2005,2006,2007,2008  Free Software Foundation, Inc.
+  *
+  *  GRUB is free software: you can redistribute it and/or modify
+  *  it under the terms of the GNU General Public License as published by
+@@ -268,12 +268,7 @@ read_config_file (const char *config, in
+   grub_file_close (file);
+ 
+   if (errors > 0)
+-    {
+-      /* Wait until the user pushes any key so that the user can
+-	 see what happened.  */
+-      grub_printf ("\nPress any key to continue...");
+-      (void) grub_getkey ();
+-    }
++    grub_wait_after_message ();
+ 
+   return newmenu;
+ }
+@@ -527,6 +522,14 @@ GRUB_MOD_INIT(normal)
+   grub_rescue_register_command ("normal", grub_rescue_cmd_normal,
+ 				"enter normal mode");
+ 
++  /* Reload terminal colors when these variables are written to.  */
++  grub_register_variable_hook ("color_normal", NULL, grub_env_write_color_normal);
++  grub_register_variable_hook ("color_highlight", NULL, grub_env_write_color_highlight);
++
++  /* Preserve hooks after context changes.  */
++  grub_env_export ("color_normal");
++  grub_env_export ("color_highlight");
++
+   /* This registers some built-in commands.  */
+   grub_command_init ();
+ }
+
+diff -x '*~' -x '*.mk' -Nurp normal/menu.c grub2.color/normal/menu.c
+--- normal/menu.c	2007-12-25 12:10:46.000000000 +0100
++++ grub2.color/normal/menu.c	2008-01-03 15:31:37.000000000 +0100
+@@ -1,6 +1,6 @@
+ /*
+  *  GRUB  --  GRand Unified Bootloader
+- *  Copyright (C) 2003,2004,2005,2006,2007  Free Software Foundation, Inc.
++ *  Copyright (C) 2003,2004,2005,2006,2007,2008  Free Software Foundation, Inc.
+  *
+  *  GRUB is free software: you can redistribute it and/or modify
+  *  it under the terms of the GNU General Public License as published by
+@@ -25,8 +25,17 @@
+ #include <grub/env.h>
+ #include <grub/script.h>
+ 
+-#define GRUB_COLOR_MENU_NORMAL		0x07
+-#define GRUB_COLOR_MENU_HIGHLIGHT	0x70
++static grub_uint8_t grub_color_menu_normal;
++static grub_uint8_t grub_color_menu_highlight;
++
++/* Wait until the user pushes any key so that the user
++   can see what happened.  */
++void
++grub_wait_after_message (void)
++{
++  grub_printf ("\nPress any key to continue...");
++  (void) grub_getkey ();
++}
+ 
+ static void
+ draw_border (void)
+@@ -57,7 +66,7 @@ draw_border (void)
+     grub_putcode (GRUB_TERM_DISP_HLINE);
+   grub_putcode (GRUB_TERM_DISP_LR);
+ 
+-  grub_setcolorstate (GRUB_TERM_COLOR_STANDARD);
++  grub_setcolorstate (GRUB_TERM_COLOR_NORMAL);
+ 
+   grub_gotoxy (GRUB_TERM_MARGIN,
+ 	       (GRUB_TERM_TOP_BORDER_Y + GRUB_TERM_NUM_ENTRIES
+@@ -67,6 +76,8 @@ draw_border (void)
+ static void
+ print_message (int nested, int edit)
+ {
++  grub_setcolorstate (GRUB_TERM_COLOR_NORMAL);
++
+   if (edit)
+     {
+       grub_printf ("\n\
+@@ -108,7 +119,7 @@ print_entry (int y, int highlight, grub_
+   grub_ssize_t len;
+   grub_uint32_t *unicode_title;
+   grub_ssize_t i;
+-  grub_uint8_t normal_code, highlight_code;
++  grub_uint8_t old_color_normal, old_color_highlight;
+ 
+   title = entry ? entry->title : "";
+   unicode_title = grub_malloc (grub_strlen (title) * sizeof (*unicode_title));
+@@ -124,9 +135,9 @@ print_entry (int y, int highlight, grub_
+       grub_free (unicode_title);
+       return;
+     }
+-  
+-  grub_getcolor (&normal_code, &highlight_code);
+-  grub_setcolor (GRUB_COLOR_MENU_NORMAL, GRUB_COLOR_MENU_HIGHLIGHT);
++
++  grub_getcolor (&old_color_normal, &old_color_highlight);
++  grub_setcolor (grub_color_menu_normal, grub_color_menu_highlight);
+   grub_setcolorstate (highlight
+ 		      ? GRUB_TERM_COLOR_HIGHLIGHT
+ 		      : GRUB_TERM_COLOR_NORMAL);
+@@ -164,8 +175,8 @@ print_entry (int y, int highlight, grub_
+ 
+   grub_gotoxy (GRUB_TERM_CURSOR_X, y);
+ 
+-  grub_setcolor (normal_code, highlight_code);
+-  grub_setcolorstate (GRUB_TERM_COLOR_STANDARD);
++  grub_setcolor (old_color_normal, old_color_highlight);
++  grub_setcolorstate (GRUB_TERM_COLOR_NORMAL);
+   grub_free (unicode_title);
+ }
+ 
+@@ -209,15 +220,23 @@ print_entries (grub_menu_t menu, int fir
+ void
+ grub_menu_init_page (int nested, int edit)
+ {
+-  grub_uint8_t normal_code, highlight_code;
+-  grub_getcolor (&normal_code, &highlight_code);
+-  grub_setcolor (GRUB_COLOR_MENU_NORMAL, GRUB_COLOR_MENU_HIGHLIGHT);
++  grub_uint8_t old_color_normal, old_color_highlight;
++
++  grub_getcolor (&old_color_normal, &old_color_highlight);
++
++  /* By default, use the same colors for the menu.  */
++  grub_color_menu_normal = old_color_normal;
++  grub_color_menu_highlight = old_color_highlight;
++
++  /* Then give user a chance to replace them.  */
++  grub_parse_color_name_pair (&grub_color_menu_normal, grub_env_get ("menu_color_normal"));
++  grub_parse_color_name_pair (&grub_color_menu_highlight, grub_env_get ("menu_color_highlight"));
+ 
+   grub_normal_init_page ();
++  grub_setcolor (grub_color_menu_normal, grub_color_menu_highlight);
+   draw_border ();
++  grub_setcolor (old_color_normal, old_color_highlight);
+   print_message (nested, edit);
+-
+-  grub_setcolor (normal_code, highlight_code);
+ }
+ 
+ /* Return the current timeout. If the variable "timeout" is not set or
+@@ -501,10 +520,7 @@ grub_menu_run (grub_menu_t menu, int nes
+ 	  grub_print_error ();
+ 	  grub_errno = GRUB_ERR_NONE;
+ 
+-	  /* Wait until the user pushes any key so that the user
+-	     can see what happened.  */
+-	  grub_printf ("\nPress any key to continue...");
+-	  (void) grub_getkey ();
++	  grub_wait_after_message ();
+ 	}
+     }
+ }
+
+diff -x '*~' -x '*.mk' -Nurp normal/menu_entry.c grub2.color/normal/menu_entry.c
+--- normal/menu_entry.c	2007-12-30 09:52:05.000000000 +0100
++++ grub2.color/normal/menu_entry.c	2008-01-03 16:13:59.000000000 +0100
+@@ -1,6 +1,6 @@
+ /*
+  *  GRUB  --  GRand Unified Bootloader
+- *  Copyright (C) 2005,2006,2007  Free Software Foundation, Inc.
++ *  Copyright (C) 2005,2006,2007,2008  Free Software Foundation, Inc.
+  *
+  *  GRUB is free software: you can redistribute it and/or modify
+  *  it under the terms of the GNU General Public License as published by
+@@ -1030,10 +1030,7 @@ run (struct screen *screen)
+     {
+       grub_print_error ();
+       grub_errno = GRUB_ERR_NONE;
+-      /* Wait until the user pushes any key so that the user
+-	 can see what happened.  */
+-      grub_printf ("\nPress any key to continue...");
+-      (void) grub_getkey ();
++      grub_wait_after_message ();
+     }
+ 
+   return 1;

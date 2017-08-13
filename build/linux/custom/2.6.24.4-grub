@@ -1,0 +1,6 @@
+# GRUB configuration for linux-2.6.24.4
+menuentry "Linux 2.6.24.4" {
+	set root=(hd0,1)
+	linux (hd0,1)/boot/2.6.24.4/bzImage root=/dev/hda1 vga=5
+}
+

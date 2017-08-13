@@ -1,0 +1,29 @@
+--- Makefile.orig	2008-05-10 02:48:15.000000000 -0400
++++ Makefile	2008-05-10 02:50:08.000000000 -0400
+@@ -67,13 +67,7 @@
+ showkey:	showkey.o $(LIBNEWT)
+ 	$(CC) -g -o showkey showkey.o $(LIBNEWT) $(LIBS)
+ 
+-_snackmodule.so:   snackmodule.c $(LIBNEWTSH)
+-	for ver in $(PYTHONVERS) ; do \
+-	    	mkdir -p $$ver ;\
+-	        $(CC) $(CFLAGS) -I/usr/include/$$ver $(SHCFLAGS) -c -o $$ver/snackmodule.o snackmodule.c ;\
+-		$(CC) --shared $(SHCFLAGS) -o $$ver/_snackmodule.so $$ver/snackmodule.o -L .  -lnewt -lslang ;\
+-	done
+-	touch $@
++_snackmodule.so:  
+ 
+ whiptail: $(NDIALOGOBJS) $(LIBNEWTSH)
+ 	$(CC) -g -o whiptail $(NDIALOGOBJS) -L . -lnewt $(LIBS) -lpopt
+@@ -126,11 +120,6 @@
+ 	ln -sf $(LIBNEWTSONAME) $(instroot)/$(libdir)/libnewt.so
+ 	ln -sf $(LIBNEWTSH) $(instroot)/$(libdir)/$(LIBNEWTSONAME)
+ 	[ -n "$(WHIPTCLSO)" ] && install -m 755 whiptcl.so $(instroot)/$(libdir) || :
+-	for ver in $(PYTHONVERS) ; do \
+-	   [ -d $(instroot)/$(libdir)/$$ver/site-packages ] || install -m 755 -d $(instroot)/$(libdir)/$$ver/site-packages ;\
+-	   install -m 755 $$ver/_snackmodule.so $(instroot)/$(libdir)/$$ver/site-packages ;\
+-	   install -m 644 snack.py $(instroot)/$(libdir)/$$ver/site-packages ;\
+-	done
+ 
+ configure:  configure.ac newt.spec
+ 	autoconf

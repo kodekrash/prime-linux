@@ -1,0 +1,12 @@
+--- alloca_.h-orig	2008-05-08 23:46:54.000000000 -0400
++++ alloca_.h	2008-05-08 23:47:42.000000000 -0400
+@@ -47,7 +47,9 @@
+ #  ifdef  __cplusplus
+ extern "C"
+ #  endif
++#   ifndef alloca
+ void *alloca (size_t);
++#   endif
+ # endif
+ #endif
+ 

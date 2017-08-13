@@ -1,0 +1,21 @@
+id:3:initdefault:
+
+si::sysinit:/etc/rc.d/rc.init
+
+ha:0:wait:/etc/rc.d/rc.0
+su:1:wait:/etc/rc.d/rc.1
+mn:2:wait:/etc/rc.d/rc.2
+mu:3:wait:/etc/rc.d/rc.3
+na:4:wait:/etc/rc.d/rc.4
+gu:5:wait:/etc/rc.d/rc.5
+rb:6:wait:/etc/rc.d/rc.6
+
+ca::ctrlaltdel:/sbin/shutdown -t3 -r now
+
+1:2345:respawn:/sbin/mingetty tty1
+2:2345:respawn:/sbin/mingetty tty2
+3:2345:respawn:/sbin/mingetty tty3
+4:2345:respawn:/sbin/mingetty tty4
+5:2345:respawn:/sbin/mingetty tty5
+6:2345:respawn:/sbin/mingetty tty6
+

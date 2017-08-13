@@ -1,0 +1,72 @@
+#!/bin/bash
+
+STATUS="$1"
+CMD="$2"
+DESC="$3"
+
+ESC=""
+C_GREY="1;30"
+C_YELLOW="1;33"
+C_BLUE="1;34"
+C_PURPLE="1;35"
+C_WHITE="1;37"
+C_RED="1;38"
+C_GREEN="1;39"
+C_NONE="0"
+
+function color() {
+	echo "${ESC}[$1m"
+}
+
+function msg_action() {
+	echo -n "`color ${C_GREY}`$1: "
+}
+
+function msg_service() {
+	d="$1"
+	l="$(echo "40-${#d}" | bc)"
+	printf "`color ${C_BLUE}`%s%${l}s" "$d"
+}
+
+function msg_ok() {
+	echo -n "`color ${C_GREY}`[  `color ${C_GREEN}`OK`color ${C_GREY}`  ]"
+}
+
+function msg_err() {
+	echo -n "`color ${C_GREY}`[ `color ${C_RED}`FAIL`color ${C_GREY}` ]"
+}
+
+function msg_end() {
+	echo "`color ${C_NONE}`"
+}
+
+if [ -z "${CMD}" ]; then
+	echo "Invalid command"
+	exit 1
+fi
+
+if [ -z "${DESC}" ]; then
+	echo "Invalid description"
+	exit 1
+fi
+
+if [ "${STATUS}" = "start" ]; then
+	msg_action "Starting"
+elif [ "${STATUS}" = "stop" ]; then
+	msg_action "Stopping"
+else
+	exit 0
+fi
+
+msg_service "${DESC}"
+if [ -w /dev/null ]; then
+	${CMD} 2&>1 /dev/null
+else
+	$CMD
+fi
+if [ $? -eq 0 ]; then
+	msg_ok
+else
+	msg_err
+fi
+msg_end

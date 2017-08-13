@@ -1,0 +1,27 @@
+#!/bin/bash
+###########################################################
+# Init Script: /etc/issue
+###########################################################
+
+function color() {
+	echo "${ESC}[$1m"
+}
+
+TF="/etc/issue"
+
+ESC=""
+CLS="${ESC}[H${ESC}[J"
+C_GREY="1;30"
+C_YELLOW="1;33"
+C_BLUE="1;34"
+C_PURPLE="1;35"
+C_WHITE="1;37"
+C_RED="1;38"
+C_GREEN="1;39"
+C_NONE="0"
+
+echo "${CLS}`color ${C_GREEN}`----------------------------------------------------" >> ${TF}
+echo "  `color ${C_BLUE}`$(cat /etc/prime-release) `color ${C_GREEN}`(`color ${C_YELLOW}`$(uname -r)`color ${C_GREEN}`)" >> ${TF}
+echo "  `color ${C_BLUE}`http://prime-linux.org/" >> ${TF}
+echo "`color ${C_GREEN}`----------------------------------------------------`color ${C_NONE}`" >> ${TF}
+echo >> ${TF}

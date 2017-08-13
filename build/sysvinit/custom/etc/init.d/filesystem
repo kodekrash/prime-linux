@@ -1,0 +1,13 @@
+#!/bin/bash
+#########################################################
+# Init Script: filesystem
+#########################################################
+
+mount -n -o remount rw / &> /dev/null
+rm -f /fastboot /forcefsck
+> /etc/mtab
+mount -f / || failed=1
+mount -f /proc || failed=1
+mount -f /sys || failed=1
+(exit ${failed})
+mount -a -O no_netdev &> /dev/null

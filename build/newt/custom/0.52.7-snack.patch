@@ -1,0 +1,11 @@
+--- snack.py	13 Jun 2007 17:17:53 -0000	1.69
++++ snack.py	11 Jul 2007 17:00:28 -0000	1.70
+@@ -826,7 +826,8 @@
+     for n in prompts:
+         if (type(n) == types.TupleType):
+             (n, e) = n
+-            e = Entry(entryWidth, e)
++            if (type(e) in types.StringTypes):
++                e = Entry(entryWidth, e)
+         else:
+             e = Entry(entryWidth)

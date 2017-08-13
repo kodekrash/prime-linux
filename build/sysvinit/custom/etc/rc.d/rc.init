@@ -1,0 +1,7 @@
+#!/bin/bash
+
+/sbin/prime-init start "/etc/init.d/udev" "Device Subsystem"
+/sbin/prime-init start "/etc/init.d/filesystem" "Filesystem"
+/sbin/prime-init start "/etc/init.d/syslog" "Logging System"
+/sbin/prime-init start "/etc/init.d/network" "Networking"
+/sbin/prime-init start "/etc/init.d/issue" "Login Message"

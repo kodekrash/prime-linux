@@ -1,0 +1,10 @@
+set nocompatible
+set autoindent
+set smartindent
+set tabstop=4
+set shiftwidth=4
+set ruler
+set nohls
+set incsearch
+set backspace=indent,eol,start
+set wrapmargin=8

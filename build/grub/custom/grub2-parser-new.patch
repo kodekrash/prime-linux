@@ -1,0 +1,226 @@
+2007-12-23  Bean  <bean123ch@gmail.com>
+
+	* normal/execute.c (grub_script_exec_argument_to_string): Check for undefined variable.
+	(grub_script_execute_cmdline): Reset grub_errno.
+
+	* normal/main.c (read_config_file): Reset grub_errno.
+
+	* normal/parse.y (script): Changed.
+	(script_1): New.
+	(delimiter): New.
+	(command): Changed.
+	(commands): Changed.
+	(commandblock): Changed.
+	(menuentry): Changed. 
+	(if): Changed.
+
+
+	* conf/common.rmk (pkgdata_MODULES): Add echo.mod.
+
+
+diff --git a/conf/common.rmk b/conf/common.rmk
+index 44263d4..10eadcd 100644
+--- a/conf/common.rmk
++++ conf/common.rmk
+@@ -197,7 +197,7 @@ lvm_mod_LDFLAGS = $(COMMON_LDFLAGS)
+ 
+ # Commands.
+ pkgdata_MODULES += hello.mod boot.mod terminal.mod ls.mod	\
+-	cmp.mod cat.mod help.mod font.mod search.mod		\
++	echo.mod cmp.mod cat.mod help.mod font.mod search.mod	\
+ 	loopback.mod configfile.mod				\
+ 	terminfo.mod test.mod blocklist.mod hexdump.mod
+ 
+diff --git a/normal/execute.c b/normal/execute.c
+index c7946e3..0960c17 100644
+--- a/normal/execute.c
++++ normal/execute.c
+@@ -49,7 +49,8 @@ grub_script_execute_argument_to_string (struct grub_script_arg *arg)
+       if (argi->type == 1)
+ 	{
+ 	  val = grub_env_get (argi->str);
+-	  size += grub_strlen (val);
++	  if (val)
++	    size += grub_strlen (val);
+ 	}
+       else
+ 	size += grub_strlen (argi->str);
+@@ -67,7 +68,8 @@ grub_script_execute_argument_to_string (struct grub_script_arg *arg)
+       if (argi->type == 1)
+ 	{
+ 	  val = grub_env_get (argi->str);
+-	  grub_strcat (chararg, val);
++	  if (val)
++	    grub_strcat (chararg, val);
+ 	}
+       else
+ 	grub_strcat (chararg, argi->str);
+@@ -99,6 +101,9 @@ grub_script_execute_cmdline (struct grub_script_cmd *cmd)
+   grubcmd = grub_command_find (cmdline->cmdname);
+   if (! grubcmd)
+     {
++      /* Ignore errors.  */
++      grub_errno = GRUB_ERR_NONE;
++
+       /* It's not a GRUB command, try all functions.  */
+       func = grub_script_function_find (cmdline->cmdname);
+       if (! func)
+diff --git a/normal/main.c b/normal/main.c
+index ccea447..32e649c 100644
+--- a/normal/main.c
++++ normal/main.c
+@@ -261,6 +261,9 @@ read_config_file (const char *config, int nested)
+       /* Execute the command(s).  */
+       grub_script_execute (parsed_script);
+ 
++      /* Ignore errors.  */
++      grub_errno = GRUB_ERR_NONE;
++
+       /* The parsed script was executed, throw it away.  */
+       grub_script_free (parsed_script);
+     }
+diff --git a/normal/parser.y b/normal/parser.y
+index 02fe8c5..4fef463 100644
+--- a/normal/parser.y
++++ normal/parser.y
+@@ -43,7 +43,7 @@
+ %token GRUB_PARSER_TOKEN_FI		"fi"
+ %token GRUB_PARSER_TOKEN_NAME
+ %token GRUB_PARSER_TOKEN_VAR
+-%type <cmd> script grubcmd command commands commandblock menuentry if
++%type <cmd> script script_1 grubcmd command commands commandblock menuentry if
+ %type <arglist> arguments;
+ %type <arg> argument;
+ %type <string> "if" "while" "function" "else" "then" "fi"
+@@ -55,12 +55,29 @@
+ 
+ %%
+ /* It should be possible to do this in a clean way...  */
+-script:		{ state->err = 0} newlines commands
++script:		{ state->err = 0} script_1
+ 		  {
+-		    state->parsed = $3;
++		    state->parsed = $2;
+ 		  }
+ ;
+ 
++script_1:	commands { $$ = $1; }
++		| function newlines { $$ = 0; }
++		| menuentry newlines { $$ = $1; }
++		| error
++		  {
++		    $$ = 0;
++		    yyerror (state, "Incorrect script");
++		    state->err = 1;
++		    yyerrok;
++		  }
++;
++
++delimiter:	'\n'
++		| ';'
++		| delimiter '\n'
++;
++
+ newlines:	/* Empty */
+ 		| newlines '\n'
+ ;
+@@ -124,39 +141,29 @@ grubcmd:	GRUB_PARSER_TOKEN_NAME arguments
+ ;
+ 
+ /* A single command.  */
+-command:	grubcmd 	{ $$ = $1; }
+-		| if 		{ $$ = $1; }
+-		| function	{ $$ = 0;  }
+-		| menuentry	{ $$ = $1; }
++command:	grubcmd delimiter { $$ = $1; }
++		| if delimiter 	{ $$ = $1; }
++		| commandblock delimiter { $$ = $1; }
++		| error delimiter
++		  {
++		    $$ = 0;
++		    yyerror (state, "Incorrect command");
++		    state->err = 1;
++		    yyerrok;
++		  }
+ ;
+ 
+ /* A block of commands.  */
+-commands:	command '\n'
+-		  { 
+-		    $$ = grub_script_add_cmd (state, 0, $1);
+-		  }
+-		| command
+-		  { 
++commands:	command
++		  {
+ 		    $$ = grub_script_add_cmd (state, 0, $1);
+ 		  }
+-		| command ';' commands
+-		  { 
+-		    struct grub_script_cmdblock *cmd;
+-		    cmd = (struct grub_script_cmdblock *) $3;
+-		    $$ = grub_script_add_cmd (state, cmd, $1);
+-		  }
+-		| command '\n' newlines commands
+-		  { 
++		| command commands
++		  {
+ 		    struct grub_script_cmdblock *cmd;
+-		    cmd = (struct grub_script_cmdblock *) $4;
++		    cmd = (struct grub_script_cmdblock *) $2;
+ 		    $$ = grub_script_add_cmd (state, cmd, $1);
+ 		  }
+-		| error
+-		  {
+-		    yyerror (state, "Incorrect command");
+-		    state->err = 1;
+-		    yyerrok;
+-		  }
+ ;
+ 
+ /* A function.  Carefully save the memory that is allocated.  Don't
+@@ -194,7 +201,6 @@ function:	"function" GRUB_PARSER_TOKEN_NAME
+ commandblock:	'{'
+ 		  {
+ 		    grub_script_lexer_ref (state->lexerstate);
+-                    grub_script_lexer_record_start (state->lexerstate);
+ 		  }
+                 newlines commands '}'
+                   {
+@@ -204,10 +210,17 @@ commandblock:	'{'
+ ;
+ 
+ /* A menu entry.  Carefully save the memory that is allocated.  */
+-menuentry:	"menuentry" argument newlines commandblock
++menuentry:	"menuentry" argument
++		  {
++		    grub_script_lexer_ref (state->lexerstate);
++		  } newlines '{'
++		  {
++		    grub_script_lexer_record_start (state->lexerstate);
++		  } newlines commands '}'
+ 		  {
+ 		    char *menu_entry;
+ 		    menu_entry = grub_script_lexer_record_stop (state->lexerstate);
++		    grub_script_lexer_deref (state->lexerstate);
+ 		    $$ = grub_script_create_cmdmenu (state, $2, menu_entry, 0);
+ 		  }
+ ;
+@@ -218,14 +231,14 @@ if_statement:	"if" { grub_script_lexer_ref (state->lexerstate); }
+ ;
+ 
+ /* The if statement.  */
+-if:		 if_statement grubcmd ';' "then" commands "fi"
++if:		 if_statement commands "then" newlines commands "fi"
+ 		  {
+ 		    $$ = grub_script_create_cmdif (state, $2, $5, 0);
+ 		    grub_script_lexer_deref (state->lexerstate);
+ 		  }
+-		 | if_statement grubcmd ';' "then" commands "else" commands  "fi"
++		 | if_statement commands "then" newlines commands "else" newlines commands  "fi"
+ 		  {
+-		    $$ = grub_script_create_cmdif (state, $2, $5, $7);
++		    $$ = grub_script_create_cmdif (state, $2, $5, $8);
+ 		    grub_script_lexer_deref (state->lexerstate);
+ 		  }
+ ;
